@@ -1,13 +1,16 @@
 zsim-nvmain
 ===========
 
-This is a modified verison of zsim that integrates a cycle accurate main memory
-simulator for emerging non-volatile memories -- NVMain. This fork has been 
-developed as part of the AXLE project `www.axleproject.eu`.
+This is a modified version of zsim and axle-zsim-nvmain. axle-zsim-nvmain 
+integrates a cycle accurate main memory simulator for emerging non-volatile 
+memories, NVMain, to zsim. This fork merges axle-zsim-nvmain modifications with 
+more recent zsim versions. 
 
-The research leading to these results has received funding from the European 
-Union's Seventh Framework Programme (FP7/2007-2013) under grant agreement 
-n° 318633.
+The credits for this work go to zsim and axle-zsim-nvmain creators.
+
+Original repositories:
+https://github.com/s5z/zsim
+https://github.com/AXLEproject/axle-zsim-nvmain
 
 
 NVMain integration
