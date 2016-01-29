@@ -59,6 +59,7 @@
 #include "stats.h"
 #include "trace_driver.h"
 #include "virt/virt.h"
+#include "nvmain_mem_ctrl.h"
 
 //#include <signal.h> //can't include this, conflicts with PIN's
 
@@ -575,7 +576,7 @@ VOID Instruction(INS ins) {
      * is never emitted by any x86 compiler, as they use other (recommended) nop
      * instructions or sequences.
      */
-    if (INS_IsXchg(ins) && INS_OperandReg(ins, 0) == REG_RCX && INS_OperandReg(ins, 1) == REG_RCX) {
+    if (INS_IsXchg(ins) && INS_OperandReg(ins, 0) == LEVEL_BASE::REG_RCX && INS_OperandReg(ins, 1) == LEVEL_BASE::REG_RCX) {
         //info("Instrumenting magic op");
         INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) HandleMagicOp, IARG_THREAD_ID, IARG_REG_VALUE, REG_ECX, IARG_END);
     }
@@ -673,6 +674,7 @@ void VdsoInsertFunc(IMG vi, const char* fName, VdsoFunc func) {
 }
 
 void VdsoInit() {
+    return;
     Section vdso = FindSection("vdso");
     vdsoStart = vdso.start;
     vdsoEnd = vdso.end;
@@ -794,11 +796,11 @@ VOID VdsoInstrument(INS ins) {
     if (unlikely(insAddr >= vdsoStart && insAddr < vdsoEnd)) {
         if (vdsoEntryMap.find(insAddr) != vdsoEntryMap.end()) {
             VdsoFunc func = vdsoEntryMap[insAddr];
-            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) VdsoEntryPoint, IARG_THREAD_ID, IARG_UINT32, (uint32_t)func, IARG_REG_VALUE, REG_RDI, IARG_REG_VALUE, REG_RSI, IARG_END);
+            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) VdsoEntryPoint, IARG_THREAD_ID, IARG_UINT32, (uint32_t)func, IARG_REG_VALUE, LEVEL_BASE::REG_RDI, IARG_REG_VALUE, LEVEL_BASE::REG_RSI, IARG_END);
         } else if (INS_IsCall(ins)) {
             INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) VdsoCallPoint, IARG_THREAD_ID, IARG_END);
         } else if (INS_IsRet(ins)) {
-            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) VdsoRetPoint, IARG_THREAD_ID, IARG_REG_REFERENCE, REG_RAX /* return val */, IARG_END);
+            INS_InsertCall(ins, IPOINT_BEFORE, (AFUNPTR) VdsoRetPoint, IARG_THREAD_ID, IARG_REG_REFERENCE, LEVEL_BASE::REG_RAX /* return val */, IARG_END);
         }
     }
 
@@ -1124,6 +1126,14 @@ VOID SimEnd() {
         zinfo->trigger = 20000;
         for (StatsBackend* backend : *(zinfo->statsBackends)) backend->dump(false /*unbuffered, write out*/);
         for (AccessTraceWriter* t : *(zinfo->traceWriters)) t->dump(false);  // flushes trace writer
+
+        // Print NVMain internal stats
+        info("Has nvmain %d, num memory controllers %d", zinfo->hasNVMain, zinfo->numMemoryControllers);
+        if (zinfo->hasNVMain) {
+            for(uint32_t i = 0; i < zinfo->numMemoryControllers; i++) {
+                dynamic_cast<NVMainMemory*>(zinfo->memoryControllers[i])->printStats();
+            }
+        }
 
         if (zinfo->sched) zinfo->sched->notifyTermination();
     }

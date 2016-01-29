@@ -287,6 +287,16 @@ class VectorCounter : public VectorStat {
         inline void atomicInc(uint32_t idx) {
             __sync_fetch_and_add(&_counters[idx], 1);
         }
+        
+        inline void dec(uint32_t idx, uint64_t value) {
+            assert(_counters[idx] >= value)
+            _counters[idx] -= value;
+        }
+
+        inline void dec(uint32_t idx) {
+            assert(_counters[idx] > 0);
+            _counters[idx]--;
+        }       
 
         inline virtual uint64_t count(uint32_t idx) const {
             return _counters[idx];

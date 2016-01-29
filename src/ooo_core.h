@@ -36,7 +36,7 @@
 #include "pad.h"
 
 // Uncomment to enable stall stats
-// #define OOO_STALL_STATS
+#define OOO_STALL_STATS
 
 class FilterCache;
 
@@ -363,6 +363,8 @@ class OOOCore : public Core {
         FilterCache* l1i;
         FilterCache* l1d;
 
+        uint32_t id;
+
         uint64_t phaseEndCycle; //next stopping point
 
         uint64_t curCycle; //this model is issue-centric; curCycle refers to the current issue cycle
@@ -433,8 +435,10 @@ class OOOCore : public Core {
 
         OOOCoreRecorder cRec;
 
+        uint8_t addressRandomizationTable[256];
+
     public:
-        OOOCore(FilterCache* _l1i, FilterCache* _l1d, g_string& _name);
+        OOOCore(FilterCache* _l1i, FilterCache* _l1d, g_string& _name, uint32_t _id);
 
         void initStats(AggregateStat* parentStat);
 
@@ -482,6 +486,10 @@ class OOOCore : public Core {
         static void PredStoreFunc(THREADID tid, ADDRINT addr, BOOL pred);
         static void BblFunc(THREADID tid, ADDRINT bblAddr, BblInfo* bblInfo);
         static void BranchFunc(THREADID tid, ADDRINT pc, BOOL taken, ADDRINT takenNpc, ADDRINT notTakenNpc);
+
+        // Address randomization
+        ADDRINT RandomizeAddress(ADDRINT vAddr);
+        ADDRINT RemapAddress(ADDRINT vaPage);
 } ATTR_LINE_ALIGNED;  // Take up an int number of cache lines
 
 #endif  // OOO_CORE_H_

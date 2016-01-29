@@ -31,12 +31,13 @@
 #include "decoder.h"
 #include "filter_cache.h"
 #include "zsim.h"
+#include "rng.h"
 
 /* Uncomment to induce backpressure to the IW when the load/store buffers fill up. In theory, more detailed,
  * but sometimes much slower (as it relies on range poisoning in the IW, potentially O(n^2)), and in practice
  * makes a negligible difference (ROB backpressures).
  */
-//#define LSU_IW_BACKPRESSURE
+#define LSU_IW_BACKPRESSURE
 
 #define DEBUG_MSG(args...)
 //#define DEBUG_MSG(args...) info(args)
@@ -55,7 +56,7 @@
 #define ISSUES_PER_CYCLE 4
 #define RF_READS_PER_CYCLE 3
 
-OOOCore::OOOCore(FilterCache* _l1i, FilterCache* _l1d, g_string& _name) : Core(_name), l1i(_l1i), l1d(_l1d), cRec(0, _name) {
+OOOCore::OOOCore(FilterCache* _l1i, FilterCache* _l1d, g_string& _name, uint32_t _id) : Core(_name), l1i(_l1i), l1d(_l1d), cRec(0, _name) {
     decodeCycle = DECODE_STAGE;  // allow subtracting from it
     curCycle = 0;
     phaseEndCycle = zinfo->phaseLength;
@@ -74,6 +75,21 @@ OOOCore::OOOCore(FilterCache* _l1i, FilterCache* _l1d, g_string& _name) : Core(_
     instrs = uops = bbls = approxInstrs = mispredBranches = 0;
 
     for (uint32_t i = 0; i < FWD_ENTRIES; i++) fwdArray[i].set((Address)(-1L), 0);
+
+    if (zinfo->addressRandomization) {
+      // Fisher-Yates shuffle, simultaneously initializing array to addressRandomizationTable[i] = i
+      // See http://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#The_.22inside-out.22_algorithm
+      // By using the app_id as a random seed, we get an app_id-specific pseudo-random permutation of 0..255
+      uint64_t state = rng_seed(id);
+      addressRandomizationTable[0] = 0;
+      for(unsigned int i = 1; i < 256; ++i)
+      {
+         uint8_t j = rng_next(state) % (i + 1);
+         addressRandomizationTable[i] = addressRandomizationTable[j];
+         addressRandomizationTable[j] = i;
+      }
+   }
+
 }
 
 void OOOCore::initStats(AggregateStat* parentStat) {
@@ -134,11 +150,11 @@ void OOOCore::contextSwitch(int32_t gid) {
 InstrFuncPtrs OOOCore::GetFuncPtrs() {return {LoadFunc, StoreFunc, BblFunc, BranchFunc, PredLoadFunc, PredStoreFunc, FPTR_ANALYSIS, {0}};}
 
 inline void OOOCore::load(Address addr) {
-    loadAddrs[loads++] = addr;
+    loadAddrs[loads++] = this->RandomizeAddress(addr);
 }
 
 void OOOCore::store(Address addr) {
-    storeAddrs[stores++] = addr;
+    storeAddrs[stores++] = this->RandomizeAddress(addr);
 }
 
 // Predicated loads and stores call this function, gets recorded as a 0-cycle op.
@@ -149,13 +165,14 @@ void OOOCore::predFalseMemOp() {
 }
 
 void OOOCore::branch(Address pc, bool taken, Address takenNpc, Address notTakenNpc) {
-    branchPc = pc;
+    branchPc = this->RandomizeAddress(pc);
     branchTaken = taken;
-    branchTakenNpc = takenNpc;
-    branchNotTakenNpc = notTakenNpc;
+    branchTakenNpc = this->RandomizeAddress(takenNpc);
+    branchNotTakenNpc = this->RandomizeAddress(notTakenNpc);
 }
 
 inline void OOOCore::bbl(Address bblAddr, BblInfo* bblInfo) {
+    bblAddr = this->RandomizeAddress(bblAddr);
     if (!prevBbl) {
         // This is the 1st BBL since scheduled, nothing to simulate
         prevBbl = bblInfo;
@@ -480,6 +497,34 @@ void OOOCore::advance(uint64_t targetCycle) {
      * counters in e.g., the ROB does not change much; consider full-blown
      * rebases though if weave models fail to validate for some app.
      */
+}
+
+// Address randomization code
+
+ADDRINT OOOCore::RandomizeAddress(ADDRINT vAddr) {
+    uint64_t vaPageShift = 12; // For 4KB pages
+    uint64_t vaPageMask = (1 << vaPageShift) - 1;
+    if (zinfo->addressRandomization) {
+        ADDRINT pAddr = (RemapAddress(vAddr >> vaPageShift) << vaPageShift) | (vAddr & vaPageMask);
+        return pAddr;
+    }
+
+    return vAddr;
+}
+
+ADDRINT OOOCore::RemapAddress(ADDRINT vaPage) {
+   // vaPage is the virtual address shifted right by the page size
+   // By randomly remapping the lower 24 bits of vaPage, addresses will be distributed
+   // over a 1<<(16+3*8) = 64 GB range which should avoid artificial set contention in all cache levels.
+   // Of course we want the remapping to be invertible so we never map different incoming addresses
+   // onto the same outgoing address. This is guaranteed since m_address_randomization_table
+   // contains each 0..255 number only once.
+   ADDRINT result = vaPage;
+   uint8_t *array = (uint8_t *)&result;
+   array[0] = addressRandomizationTable[array[0]];
+   array[1] = addressRandomizationTable[array[1]];
+   array[2] = addressRandomizationTable[array[2]];
+   return result;
 }
 
 // Pin interface code

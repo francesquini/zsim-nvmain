@@ -1,3 +1,53 @@
+zsim-nvmain
+===========
+
+This is a modified verison of zsim that integrates a cycle accurate main memory
+simulator for emerging non-volatile memories -- NVMain. This fork has been 
+developed as part of the AXLE project `www.axleproject.eu`.
+
+The research leading to these results has received funding from the European 
+Union's Seventh Framework Programme (FP7/2007-2013) under grant agreement 
+n° 318633.
+
+
+NVMain integration
+------------------
+
+The simulator includes glue code that interfaces with NVMain. A number of
+patches have been applied to NVMain to support zsim and the integration does
+not require any modification on the NVMain side.
+
+The classes that interface with NVMain can be found in `src/nvmain_mem_ctrl.*`
+
+A number of predefined configuration files are provided. These define a modern
+8-core processor that mimics the Intel Xeon E5-2670, and utilize NVMain to
+simulate the offchip memory subsystem. Three different configuration files are
+provided:
+
+1. Multi-channel DRAM: This configuration file simulates a stat-of-the-art DRAM
+subsystem with four memory controllers. This configuration file can be found in
+`tests/AXLE-sandy-dram.cfg`.
+
+2. 3D stacked DRAM cache: This configuration file simulates a system with a 3D
+stacked DRAM cache, the backing memory is modeled using the multi-channel DRAM
+configuration described above. This configuration file can be found in
+`tests/AXLE-sandy-3dcache.cfg`.
+
+3. PCM as main memory: This configuration file sets the memory subsytem to use
+the Phase Change Memory technology instead of DRAM. This configuration file can
+be found in `tests/AXLE-sandy-nvm.cfg`.
+
+
+Installation and Compilation
+----------------------------
+
+Please read the reminder of this file for further information on dependencies
+and simulator setup. Additionally, please check the `install.sh` script provided
+for further insight on how to set up the simulator to work with NVMain. The
+script also installs most of the necessary tools and libraries.
+
+
+
 zsim
 ====
 

@@ -42,6 +42,7 @@
 #include "ddr_mem.h"
 #include "debug_zsim.h"
 #include "dramsim_mem_ctrl.h"
+#include "nvmain_mem_ctrl.h"
 #include "event_queue.h"
 #include "filter_cache.h"
 #include "galloc.h"
@@ -298,6 +299,14 @@ BaseCache* BuildCacheBank(Config& config, const string& prefix, g_string& name, 
     return cache;
 }
 
+string replace(string s, const string& a, const string& b) {
+  auto index = s.find(a);
+  if (index != string::npos) {
+    s.replace(index, a.length(), b);
+  }
+  return s;
+}
+
 // NOTE: frequency is SYSTEM frequency; mem freq specified in tech
 DDRMemory* BuildDDRMemory(Config& config, uint32_t lineSize, uint32_t frequency, uint32_t domain, g_string name, const string& prefix) {
     uint32_t ranksPerChannel = config.get<uint32_t>(prefix + "ranksPerChannel", 4);
@@ -359,6 +368,14 @@ MemObject* BuildMemoryController(Config& config, uint32_t lineSize, uint32_t fre
         string outputDir = config.get<const char*>("sys.mem.outputDir");
         string traceName = config.get<const char*>("sys.mem.traceName");
         mem = new DRAMSimMemory(dramTechIni, dramSystemIni, outputDir, traceName, capacity, cpuFreqHz, latency, domain, name);
+    } else if (type == "NVMain") {
+        uint32_t capacity = config.get<uint32_t>("sys.mem.capacityMB", 16384);
+        string nvmainTechIni = config.get<const char*>("sys.mem.techIni");
+        string envVar = config.get<const char*>("sys.mem.envVar");
+        nvmainTechIni = replace(nvmainTechIni, envVar, getenv(envVar.c_str())? getenv(envVar.c_str()): "");
+        string outputFile = config.get<const char*>("sys.mem.outputFile");
+        string traceName = config.get<const char*>("sys.mem.traceName");
+        mem = new NVMainMemory(nvmainTechIni, outputFile, traceName, capacity, latency, domain, name);
     } else if (type == "Detailed") {
         // FIXME(dsm): Don't use a separate config file... see DDRMemory
         g_string mcfg = config.get<const char*>("sys.mem.paramFile", "");
@@ -499,6 +516,9 @@ static void InitSystem(Config& config) {
 
     g_vector<MemObject*> mems;
     mems.resize(memControllers);
+    zinfo->numMemoryControllers = memControllers;
+    zinfo->hasNVMain = (config.get<const char*>("sys.mem.type", "Simple") == string("NVMain")) ? true : false;
+    zinfo->hasDRAMCache = config.get<bool>("sys.mem.hasDRAMCache", false);
 
     for (uint32_t i = 0; i < memControllers; i++) {
         stringstream ss;
@@ -508,6 +528,8 @@ static void InitSystem(Config& config) {
         uint32_t domain = i*zinfo->numDomains/memControllers;
         mems[i] = BuildMemoryController(config, zinfo->lineSize, zinfo->freqMHz, domain, name);
     }
+
+    zinfo->memoryControllers = mems;
 
     if (memControllers > 1) {
         bool splitAddrs = config.get<bool>("sys.mem.splitAddrs", true);
@@ -691,7 +713,7 @@ static void InitSystem(Config& config) {
                         core = tcore;
                     } else {
                         assert(type == "OOO");
-                        OOOCore* ocore = new (&oooCores[j]) OOOCore(ic, dc, name);
+                        OOOCore* ocore = new (&oooCores[j]) OOOCore(ic, dc, name, j);
                         zinfo->eventRecorders[coreIdx] = ocore->getEventRecorder();
                         zinfo->eventRecorders[coreIdx]->setSourceId(coreIdx);
                         core = ocore;
@@ -965,6 +987,9 @@ void SimInit(const char* configFile, const char* outputDir, uint32_t shmid) {
     //Process tree needs this initialized, even though it is part of the memory hierarchy
     zinfo->lineSize = config.get<uint32_t>("sys.lineSize", 64);
     assert(zinfo->lineSize > 0);
+
+    //Address randomization
+    zinfo->addressRandomization = config.get<bool>("sys.addressRandomization", false);
 
     //Port virtualization
     for (uint32_t i = 0; i < MAX_PORT_DOMAINS; i++) zinfo->portVirt[i] = new PortVirtualizer();

@@ -32,6 +32,8 @@
 #include "debug.h"
 #include "locks.h"
 #include "pad.h"
+#include "g_std/g_vector.h"
+#include "memory_hierarchy.h"
 
 class Core;
 class Scheduler;
@@ -108,6 +110,7 @@ struct GlobSimInfo {
     bool blockingSyscalls;
     bool perProcessCpuEnum; //if true, cpus are enumerated according to per-process masks (e.g., a 16-core mask in a 64-core sim sees 16 cores)
     bool oooDecode; //if true, Decoder does OOO (instr->uop) decoding
+    bool addressRandomization; //if true, randomize address bits for multiprocesses runs
 
     PAD();
 
@@ -181,6 +184,12 @@ struct GlobSimInfo {
     // Trace-driven simulation (no cores)
     bool traceDriven;
     TraceDriver* traceDriver;
+
+    // NVMain
+    bool hasNVMain;
+    bool hasDRAMCache;
+    uint32_t numMemoryControllers;
+    g_vector<MemObject*> memoryControllers;
 };
 
 

@@ -1,8 +1,15 @@
 import os, sys
 from os.path import join as joinpath
+import SCons
 
 useIcc = False
 #useIcc = True
+
+nvmainSources = []
+# Function used in hierarchical SConscript's found in NVMain sources
+def NVMainSource(src):
+    nvmainSources.append(File(src))
+Export('NVMainSource')
 
 def buildSim(cppFlags, dir, type, pgo=None):
     ''' Build the simulator with a specific base buid dir and config type'''
@@ -139,6 +146,28 @@ def buildSim(cppFlags, dir, type, pgo=None):
         env["CPPPATH"] += [DRAMSIMPATH]
         env["PINLIBS"] += ["dramsim"]
         env["CPPFLAGS"] += " -D_WITH_DRAMSIM_=1 "
+
+    # Only include NVMain if available
+    if "NVMAINPATH" in os.environ:
+        NVMAINPATH = os.environ["NVMAINPATH"]
+        env["LINKFLAGS"] += " -Wl,-R" + NVMAINPATH
+        env["CPPPATH"] += [NVMAINPATH]
+        env["CPPFLAGS"] += " -D_WITH_NVMAIN_=1 "
+        for root, dirs, files in os.walk(NVMAINPATH, topdown=True):
+            # Don't check nvmain's build folder if it exists
+            if 'build' in root:
+                continue
+
+            if 'SConscript' in files:
+                dir = joinpath(buildDir, root[len(NVMAINPATH)-6:])
+                SConscript(joinpath(root, 'SConscript'), variant_dir=dir, exports='env')
+        env["NVMAINSOURCES"] = nvmainSources
+
+    if "HDF5PATH" in os.environ:
+        HDF5PATH = os.environ["HDF5PATH"]
+        env["LINKFLAGS"] += " -Wl,-R" + joinpath(HDF5PATH, "lib")
+        env["LIBPATH"] += [joinpath(HDF5PATH, "lib")]
+        env["CPPPATH"] += [joinpath(HDF5PATH, "include")]
 
     env["CPPPATH"] += ["."]
 
